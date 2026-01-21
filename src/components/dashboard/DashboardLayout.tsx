@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Shield,
@@ -22,6 +22,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -37,13 +39,56 @@ const navigation = [
 
 const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [profile, setProfile] = useState<{ full_name: string | null; avatar_url: string | null } | null>(null);
+  const [userRole, setUserRole] = useState<string>("viewer");
   const location = useLocation();
   const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (!user) return;
+
+      // Fetch profile
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("full_name, avatar_url")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (profileData) {
+        setProfile(profileData);
+      }
+
+      // Fetch role
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (roleData) {
+        setUserRole(roleData.role);
+      }
+    };
+
+    fetchUserData();
+  }, [user]);
 
   const isActive = (path: string) => location.pathname === path;
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await signOut();
     navigate("/login");
+  };
+
+  const getInitials = (name: string | null) => {
+    if (!name) return user?.email?.charAt(0).toUpperCase() || "U";
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase();
   };
 
   return (
@@ -105,16 +150,16 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-sidebar-accent transition-colors">
                   <Avatar className="w-8 h-8">
-                    <AvatarImage src="/placeholder.svg" />
+                    <AvatarImage src={profile?.avatar_url || undefined} />
                     <AvatarFallback className="bg-primary/20 text-primary text-sm">
-                      JD
+                      {getInitials(profile?.full_name || null)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 text-left">
-                    <p className="text-sm font-medium text-sidebar-foreground">
-                      John Doe
+                    <p className="text-sm font-medium text-sidebar-foreground truncate">
+                      {profile?.full_name || user?.email || "User"}
                     </p>
-                    <p className="text-xs text-muted-foreground">Admin</p>
+                    <p className="text-xs text-muted-foreground capitalize">{userRole}</p>
                   </div>
                   <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 </button>
